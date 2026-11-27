@@ -1,27 +1,30 @@
-// The quick bar in SillyTavern's input area, and the window it opens.
+// The button in SillyTavern's input row, and the window it opens.
 //
-//   [📜]  [←]  21~40 / 71  [→]
+//   [ Type a message…                ] [📜] [➤]
 //
-// A slim row inside #send_form, right above the message box (its own row, so the box keeps its
-// width on a phone). 📜 opens a window with the block that is injected right now; the arrows are
-// the panel's [← 이전 N Beat] / [다음 N Beat →] — the very same action (app.shiftWindow), with
-// the same question and the same summary call when a record is owed. Between them: where the
-// injected Beats sit among all Beats of the checked file.
+// One icon beside the message box and nothing else in the input area. It sits in #rightSendForm,
+// so SillyTavern's own rules size and space it like the icons next to it. It opens a window with
+// the block that is injected right now, and everything else lives inside that window:
+//
+//   [← 이전]  21~40 / 71  [다음 →]     the panel's [← 이전 N Beat] / [다음 N Beat →] — the very
+//                                      same action (app.shiftWindow), with the same question and
+//                                      the same summary call when a record is owed
+//   [✏️ 이 구간 고치기] [✏️ 머리말 고치기]   a mistake seen there is fixed there, in the stored
+//                                      file itself (app.editSource)
+//
+// Between the arrows: where the injected Beats sit among all Beats of the checked file.
 //
 // Both are redrawn from the same plan the injection is built from (app.plannedInjection), every
-// time the panel is (ui.js calls renderBar), so the bar, the window and the prompt cannot differ.
-//
-// The window also has [✏️ 이 구간 고치기] / [✏️ 머리말 고치기]: a mistake seen there is fixed there,
-// in the stored file itself (app.editSource) — and the window shows the corrected text at once.
+// time the panel is (ui.js calls renderBar), so the window and the prompt cannot differ.
 
 import { ctx, hasChat, esc, estTokens, toast } from './st.js';
 import { whereLabel } from './inject.js';
 import * as app from '../index.js';
 
-const BAR_ID = 'cts_bar';
+const BUTTON_ID = 'cts_open';
 const POPUP_OPTIONS = { okButton: '닫기', wide: true, large: true, allowVerticalScrolling: true, leftAlign: true };
 
-let bar = null;        // the row in #send_form
+let button = null;     // the icon in the input row
 let pop = null;        // the content element of the open window; null when it is closed
 let busyNow = '';      // what the panel says is running (ui.js)
 
@@ -37,7 +40,7 @@ export function beatCounter(win) {
     return `${from === win.end ? from : `${from}~${win.end}`} / ${win.total}`;
 }
 
-/** What both the bar and the window show, from the plan the injection uses. */
+/** What both the button and the window show, from the plan the injection uses. */
 function view() {
     const s = app.getSettings();
     const p = app.plannedInjection();
@@ -53,15 +56,7 @@ function where(v) {
 }
 
 function arrow(dir, label, on, title) {
-    return `<button type="button" class="menu_button cts-btn cts-bar-btn" data-bar="${dir}"${on ? '' : ' disabled'} title="${esc(title)}">${label}</button>`;
-}
-
-function barHtml(v) {
-    const w = v.w;
-    return `<button type="button" class="menu_button cts-btn cts-bar-btn" data-bar="open" title="지금 AI에게 들어가는 원작 대본 보기 (${esc(where(v))})">📜</button>
-        ${arrow('prev', '←', v.canPrev, w.total ? `이전 ${w.size} Beat` : 'Beat 구간이 없는 파일이에요')}
-        <span class="cts-bar-count" title="지금 넣는 Beat 위치 / 이 파일의 전체 Beat 수 — ${esc(where(v))}">${busyNow ? '⏳ ' : ''}${esc(beatCounter(w))}</span>
-        ${arrow('next', '→', v.canNext, w.total ? `다음 ${w.size} Beat` : 'Beat 구간이 없는 파일이에요')}`;
+    return `<button type="button" class="menu_button cts-btn" data-bar="${dir}"${on ? '' : ' disabled'} title="${esc(title)}">${label}</button>`;
 }
 
 function windowHtml(v) {
@@ -69,7 +64,7 @@ function windowHtml(v) {
     const { s, p, w } = v;
     const nav = w.total ? `<div class="cts-pop-nav">
             ${arrow('prev', '← 이전', v.canPrev, `이전 ${w.size} Beat`)}
-            <b class="cts-bar-count" title="지금 넣는 Beat 위치 / 이 파일의 전체 Beat 수">${esc(beatCounter(w))}</b>
+            <b class="cts-pop-count" title="지금 넣는 Beat 위치 / 이 파일의 전체 Beat 수">${esc(beatCounter(w))}</b>
             ${arrow('next', '다음 →', v.canNext, `다음 ${w.size} Beat`)}
         </div>` : '';
     // Fixing the file from here: the stored text of what is shown, in SillyTavern's input box (app.editSource).
@@ -103,36 +98,41 @@ function onClick(e) {
     run(el.dataset.bar).catch(err => { console.error('[Canon Timeline Simulator]', err); toast('error', err.message); });
 }
 
-function mountBar() {
-    const form = document.getElementById('send_form');
-    if (!form) return;
-    bar = document.getElementById(BAR_ID);
-    if (!bar) {
-        bar = document.createElement('div');
-        bar.id = BAR_ID;
-        bar.className = 'cts-bar';
-        form.appendChild(bar);
+/** Puts the icon in the input row: first in #rightSendForm (left of the send button), else right after the message box. */
+function mountButton() {
+    button = document.getElementById(BUTTON_ID);
+    if (!button) {
+        const right = document.getElementById('rightSendForm');
+        const box = document.getElementById('send_textarea');
+        if (!right && !box) return;
+        button = document.createElement('div');
+        button.id = BUTTON_ID;
+        button.className = 'cts-open fa-solid fa-scroll interactable';
+        button.tabIndex = 0;
+        button.dataset.bar = 'open';
+        if (right) right.prepend(button);
+        else box.after(button);
     }
-    if (!bar.dataset.ctsBound) {
-        bar.dataset.ctsBound = '1';
-        bar.addEventListener('click', onClick);
+    if (!button.dataset.ctsBound) {
+        button.dataset.ctsBound = '1';
+        button.addEventListener('click', onClick);
     }
 }
 
 /**
- * Redraws the bar and, when it is open, the window. Shown only while this chat injects a canon
- * file (and the bar is not switched off in the settings); hidden otherwise, taking no room.
+ * Redraws the button and, when it is open, the window. The button is shown only while this chat
+ * injects a canon file (and is not switched off in the settings); hidden otherwise, taking no room.
  * @param {string} [busyText] what is running now ('' = nothing), as the panel shows it
  */
 export function renderBar(busyText = '') {
     if (typeof document === 'undefined') return;
     busyNow = busyText || '';
-    if (!bar || !bar.isConnected) { bar = null; mountBar(); }
+    if (!button || !button.isConnected) { button = null; mountButton(); }
     const v = view();
-    if (bar) {
+    if (button) {
         const show = v.active && v.s.inputBar !== false;
-        bar.hidden = !show;
-        bar.innerHTML = show ? barHtml(v) : '';
+        button.hidden = !show;
+        button.title = show ? `원작 대본 창 열기 — ${where(v)} (${beatCounter(v.w)})` : '';
     }
     if (pop) pop.innerHTML = windowHtml(v);
 }

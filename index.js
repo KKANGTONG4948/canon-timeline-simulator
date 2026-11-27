@@ -13,7 +13,8 @@
 // chosen); episodes fold into Canon Chapters and a Canon Saga, injected separately. Off-screen,
 // the original keeps unfolding by default; where the chat changed it, the chat wins.
 // Nothing moves the pointer but the user. No per-event state, no automatic judgement.
-// The same Beat-window buttons are also offered right above the message box (src/bar.js).
+// One icon beside the message box opens a window with the injected block, and the same Beat-window
+// buttons are offered inside that window (src/bar.js).
 //
 // Split out of the "코끼리를 생각하지마" canon4 module, with its story-memory dependencies removed.
 
@@ -39,7 +40,7 @@ export const defaultSettings = Object.freeze({
     files: [],                 // { id, name, text, addedAt, updatedAt } in reading order
     beatWindowSize: 20,        // Beats of the checked file injected at a time (the position is per chat)
     pastEnabled: true,         // [PAST CANON EVENTS]: false = not injected and not written when the window moves (stored records are kept)
-    inputBar: true,            // the quick bar above the message box: [📜] [←] 21~40 / 71 [→] (src/bar.js)
+    inputBar: true,            // the 📜 icon beside the message box that opens the canon window (src/bar.js)
     mdPosition: 'in_chat',     // baseline md: far from the latest messages
     mdDepth: 12,
     memPosition: 'in_chat',    // canon progress: a little closer
