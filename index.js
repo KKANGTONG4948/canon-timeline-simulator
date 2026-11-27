@@ -14,7 +14,7 @@
 // the original keeps unfolding by default; where the chat changed it, the chat wins.
 // Nothing moves the pointer but the user. No per-event state, no automatic judgement.
 // One icon beside the message box opens a window with the injected block, and the same Beat-window
-// buttons are offered inside that window (src/bar.js).
+// buttons are offered inside that window, with a box to type a Beat number into (src/bar.js).
 //
 // Split out of the "코끼리를 생각하지마" canon4 module, with its story-memory dependencies removed.
 
@@ -25,8 +25,8 @@ import { migratePrompts, addPrompt as addPromptTo, selectPrompt as selectPromptI
 import { emptyMemory, normalizeMemory, coveredFileIds, currentIndex, currentFile, setIndex } from './src/state.js';
 import { hintState, storyDate } from './src/date.js';
 import { makeEpisode, compact } from './src/memory.js';
-import { parseCached, beatsSource, headerSource, replaceSource } from './src/beats.js';
-import { makePastEvents, putPast, pastTask, snapshots } from './src/past.js';
+import { parseCached, beatWindow, beatsSource, headerSource, replaceSource } from './src/beats.js';
+import { makePastEvents, putPast, pastTask, owedBefore, snapshots } from './src/past.js';
 import { applyInjection, planned, PROMPT_KEY_MD, PROMPT_KEY_MEM } from './src/inject.js';
 import { mountPanel, renderPanel, setBusy } from './src/ui.js';
 
@@ -219,39 +219,49 @@ export async function switchFile(delta, { summarize = true } = {}) {
     }
 }
 
-/**
- * [← 이전 N Beat] / [다음 N Beat →]: moves the injected Beat window inside the checked file.
- *
- * Going forward, the window being left is first reduced to its objective events and added to
- * [PAST CANON EVENTS] (one model call, from the Beats alone); the window moves only after that
- * record is stored. A window whose record already exists is passed without a call, and going
- * back never calls the model. `record: false` moves without writing the record.
- *
- * With past events switched off (settings.pastEnabled false) nothing is pending, so every move
- * is immediate: no question, no model call, and the stored records are left as they are.
- */
-export async function shiftWindow(delta, { record = true } = {}) {
-    if (!hasChat()) return toast('warning', '채팅을 먼저 열어주세요.');
-    if (busy) return toast('warning', '이미 작업 중입니다.');
+/** What every move of the Beat window starts from; says why and returns null when nothing can move. */
+function windowNow() {
+    if (!hasChat()) { toast('warning', '채팅을 먼저 열어주세요.'); return null; }
+    if (busy) { toast('warning', '이미 작업 중입니다.'); return null; }
     const cm = getMemory(false);
-    if (!cm?.on) return toast('info', '이 채팅에서 원작 진행을 먼저 켜 주세요.');
-    const { file, win, pending } = plannedInjection();
-    if (!file || !win) return toast('info', '원작 파일을 먼저 추가해 주세요.');
-    const target = win.index + delta;
-    if (target < 0) return toast('info', '첫 Beat 구간이에요.');
-    if (target >= win.count) return toast('info', '마지막 Beat 구간이에요.');
+    if (!cm?.on) { toast('info', '이 채팅에서 원작 진행을 먼저 켜 주세요.'); return null; }
+    const { file, win } = plannedInjection();
+    if (!file || !win) { toast('info', '원작 파일을 먼저 추가해 주세요.'); return null; }
+    return { cm, file, win };
+}
+
+/**
+ * Moves the injected Beat window to window `target` of the checked file — the one rule behind the
+ * arrows (shiftWindow) and the number box (goToBeat).
+ *
+ * Going forward, the Beats before the target window are first reduced to their objective events
+ * and added to [PAST CANON EVENTS] (one model call, from the Beats alone); the window moves only
+ * after that record is stored. When the record already exists the move is made without a call,
+ * and going back never calls the model. `record: false` moves without writing the record.
+ *
+ * With past events switched off (settings.pastEnabled false) nothing is owed, so every move
+ * is immediate: no question, no model call, and the stored records are left as they are.
+ * @returns {Promise<boolean>} true when the window moved
+ */
+async function moveWindow({ cm, file, win }, target, { record = true } = {}) {
     const chatId = ctx().getCurrentChatId();
-    if (delta > 0 && pending) {
-        const range = pending.firstId === pending.lastId ? pending.firstId : `${pending.firstId} ~ ${pending.lastId}`;
+    const parsed = parseCached(file);
+    const next = target === win.index + 1;
+    const owed = target > win.index && getSettings().pastEnabled !== false ? owedBefore(cm, file.id, parsed, target * win.size) : null;
+    if (owed) {
+        const range = owed.firstId === owed.lastId ? owed.firstId : `${owed.firstId} ~ ${owed.lastId}`;
+        // A jump over several windows says where it lands and how much is read for the record.
+        const what = next ? `${range} 구간` : `${range} 구간(Beat ${owed.to - owed.from}개)`;
+        const dest = next ? '다음 구간' : `${beatWindow(parsed, target, win.size).label} 구간`;
         if (record) {
-            if (!await confirmBox('다음 Beat 구간', `${range} 구간의 원작 사건을 [PAST CANON EVENTS]에 정리한 뒤 다음 구간으로 넘어갈까요?\n\n원작 Beat 원문만 요약 모델에 보내요 (채팅 로그는 보내지 않음, API 1회). 넘어간 뒤에는 이 구간의 원문 대신 정리된 사건 기록만 넣어요.`)) return;
+            if (!await confirmBox(next ? '다음 Beat 구간' : 'Beat 구간 이동', `${what}의 원작 사건을 [PAST CANON EVENTS]에 정리한 뒤 ${dest}으로 넘어갈까요?\n\n원작 Beat 원문만 요약 모델에 보내요 (채팅 로그는 보내지 않음, API 1회). 넘어간 뒤에는 이 구간의 원문 대신 정리된 사건 기록만 넣어요.`)) return false;
             busy = true;
             setBusy(true, `지난 원작 사건 정리 중 (${range})`);
             let stored = false;
             try {
-                const text = await makePastEvents(getSettings(), pending);
+                const text = await makePastEvents(getSettings(), owed);
                 if (stillSameChat(chatId)) {
-                    putPast(cm, file.id, { count: pending.to, lastId: pending.lastId, text, at: Date.now() });
+                    putPast(cm, file.id, { count: owed.to, lastId: owed.lastId, text, at: Date.now() });
                     stored = true;
                 }
             } catch (err) {
@@ -261,16 +271,58 @@ export async function shiftWindow(delta, { record = true } = {}) {
                 busy = false;
                 setBusy(false);
             }
-            if (!stored) return;
-        } else if (!await confirmBox('기록 없이 넘기기', `${range} 구간의 원작 사건 기록 없이 다음 구간으로 넘어갈까요?\n\n이 구간의 원작 내용은 프롬프트에서 빠지고 기록도 남지 않아요. 나중에 [다음 Beat]로 넘길 때 빠진 구간까지 함께 정리해요.`)) {
-            return;
+            if (!stored) return false;
+        } else if (!await confirmBox('기록 없이 넘기기', `${what}의 원작 사건 기록 없이 ${dest}으로 넘어갈까요?\n\n이 구간의 원작 내용은 프롬프트에서 빠지고 기록도 남지 않아요. 나중에 [다음 Beat]로 넘길 때 빠진 구간까지 함께 정리해요.`)) {
+            return false;
         }
     }
-    if (!stillSameChat(chatId)) return;
+    if (!stillSameChat(chatId)) return false;
     cm.beatWindowIndex = target;
     await persistChat();
     refreshInjection();
     renderPanel();
+    return true;
+}
+
+/** [← 이전 N Beat] / [다음 N Beat →]: one window back or forward inside the checked file (moveWindow). */
+export async function shiftWindow(delta, opts) {
+    const at = windowNow();
+    if (!at) return;
+    const target = at.win.index + delta;
+    if (target < 0) { toast('info', '첫 Beat 구간이에요.'); return; }
+    if (target >= at.win.count) { toast('info', '마지막 Beat 구간이에요.'); return; }
+    await moveWindow(at, target, opts);
+}
+
+const positions = (win) => `${win.start + 1}~${win.end}`;
+
+/**
+ * The number box between the arrows: goes to the window that holds Beat number `typed` — its
+ * position in the file, as the counter shows it (1 = the file's first Beat).
+ *
+ * The windows stay as they are cut (N at a time from the start of the file), so a number from the
+ * middle of a window shows that whole window, and the user is told which one. The move itself is
+ * moveWindow(): going forward it owes the same record, with the same question and the same single
+ * call, as [다음 N Beat]; going back, or with past events off, it is immediate.
+ * @returns {Promise<boolean>} true when the window moved
+ */
+export async function goToBeat(typed) {
+    const at = windowNow();
+    if (!at) return false;
+    const { win } = at;
+    if (!win.total) { toast('info', '이 파일은 Beat 제목이 없어 통째로 넣어요. 옮길 구간이 없어요.'); return false; }
+    const text = String(typed ?? '').trim();
+    const n = /^\d+$/.test(text) ? Number(text) : NaN;
+    if (!(n >= 1 && n <= win.total)) { toast('info', `1 ~ ${win.total} 사이의 Beat 번호를 적어 주세요.`); return false; }
+    const target = Math.floor((n - 1) / win.size);
+    if (target === win.index) {
+        if (n - 1 !== win.start) toast('info', `${n}번째 Beat는 지금 넣고 있는 구간(${positions(win)})에 있어요.`);
+        return false;
+    }
+    if (!await moveWindow(at, target)) return false;
+    const now = plannedInjection().win;
+    if (now && n - 1 !== now.start) toast('info', `${n}번째 Beat가 들어 있는 ${positions(now)} 구간으로 옮겼어요.`);
+    return true;
 }
 
 const EDIT_BOX = { wide: true, large: true, okButton: '저장', cancelButton: '취소' };

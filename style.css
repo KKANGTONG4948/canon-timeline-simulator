@@ -66,5 +66,8 @@
 /* The window it opens (inside SillyTavern's popup). */
 .cts-pop { display: flex; flex-direction: column; gap: 6px; text-align: left; white-space: normal; }
 .cts-pop-nav { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
-.cts-pop-count { min-width: 6.5em; text-align: center; font-variant-numeric: tabular-nums; }
+.cts-pop-count { min-width: 6.5em; display: inline-flex; align-items: center; justify-content: center; gap: 2px; white-space: pre; font-variant-numeric: tabular-nums; }
+/* The first number of the counter is a box to type a Beat number into: no wider than the number it replaces needs. */
+.cts-pop .cts-pop-jump { width: 3.2em; min-width: 0; flex: none; margin: 0; padding: 2px 4px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cts-pop .cts-pop-jump[disabled] { opacity: 0.5; }
 .cts-pop .cts-pop-text { max-height: 60vh; max-height: 60dvh; margin: 0; }

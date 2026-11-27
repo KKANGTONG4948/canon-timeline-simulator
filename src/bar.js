@@ -6,13 +6,15 @@
 // so SillyTavern's own rules size and space it like the icons next to it. It opens a window with
 // the block that is injected right now, and everything else lives inside that window:
 //
-//   [← 이전]  21~40 / 71  [다음 →]     the panel's [← 이전 N Beat] / [다음 N Beat →] — the very
+//   [← 이전] [21]~40 / 71 [다음 →]     the panel's [← 이전 N Beat] / [다음 N Beat →] — the very
 //                                      same action (app.shiftWindow), with the same question and
 //                                      the same summary call when a record is owed
 //   [✏️ 이 구간 고치기] [✏️ 머리말 고치기]   a mistake seen there is fixed there, in the stored
 //                                      file itself (app.editSource)
 //
-// Between the arrows: where the injected Beats sit among all Beats of the checked file.
+// Between the arrows: where the injected Beats sit among all Beats of the checked file. The first
+// number is a box: the arrows change it, and a Beat number typed into it goes to the window that
+// holds that Beat (app.goToBeat — the same move, by the same rule).
 //
 // Both are redrawn from the same plan the injection is built from (app.plannedInjection), every
 // time the panel is (ui.js calls renderBar), so the window and the prompt cannot differ.
@@ -27,6 +29,9 @@ const POPUP_OPTIONS = { okButton: '닫기', wide: true, large: true, allowVertic
 let button = null;     // the icon in the input row
 let pop = null;        // the content element of the open window; null when it is closed
 let busyNow = '';      // what the panel says is running (ui.js)
+let redrawing = false; // the window's content is being replaced: focus events from that are not the user's
+
+const JUMP = '[data-bar-jump]';   // the number box
 
 /**
  * "21~40 / 71": the injected Beats by their position in the file, and how many Beats the file has.
@@ -47,7 +52,7 @@ function view() {
     const w = p.win;
     const active = !!(s.enabled && hasChat() && p.file && w);
     const free = active && !!w.total && !app.isBusy();
-    return { s, p, w, active, canPrev: free && w.index > 0, canNext: free && w.index < w.count - 1 };
+    return { s, p, w, active, free, canPrev: free && w.index > 0, canNext: free && w.index < w.count - 1 };
 }
 
 function where(v) {
@@ -62,9 +67,11 @@ function arrow(dir, label, on, title) {
 function windowHtml(v) {
     if (!v.active) return '<div class="cts-hint">지금 넣는 원작 대본이 없어요. 이 채팅에서 원작 진행이 켜져 있고 원작 파일이 있어야 해요.</div>';
     const { s, p, w } = v;
+    // The counter, with its first number in a box: "[21]~40 / 71". Typing a Beat number there goes to its window.
+    const first = String(w.start + 1);
     const nav = w.total ? `<div class="cts-pop-nav">
             ${arrow('prev', '← 이전', v.canPrev, `이전 ${w.size} Beat`)}
-            <b class="cts-pop-count" title="지금 넣는 Beat 위치 / 이 파일의 전체 Beat 수">${esc(beatCounter(w))}</b>
+            <span class="cts-pop-count" title="지금 넣는 Beat 위치 / 이 파일의 전체 Beat 수. 네모 칸에 Beat 번호를 적으면 그 Beat가 들어 있는 구간으로 가요"><input type="text" inputmode="numeric" enterkeyhint="go" autocomplete="off" maxlength="6" class="text_pole cts-pop-jump" data-bar-jump value="${first}" aria-label="Beat 번호 (1~${w.total})"${v.free ? '' : ' disabled'}><b>${esc(beatCounter(w).slice(first.length))}</b></span>
             ${arrow('next', '다음 →', v.canNext, `다음 ${w.size} Beat`)}
         </div>` : '';
     // Fixing the file from here: the stored text of what is shown, in SillyTavern's input box (app.editSource).
@@ -96,6 +103,63 @@ function onClick(e) {
     const el = e.target.closest?.('[data-bar]');
     if (!el || el.disabled) return;
     run(el.dataset.bar).catch(err => { console.error('[Canon Timeline Simulator]', err); toast('error', err.message); });
+}
+
+// ---- the number box
+//
+// What is typed is taken when the user is done with the box: Enter (the keyboard's [이동]) or
+// leaving it. An empty box, or the number it already showed, is nothing to do. Afterwards the
+// window is drawn again, so the box always ends up showing where the injection really is.
+
+function sendJump(box) {
+    if (redrawing || box.disabled || box.dataset.sent) return;
+    const typed = box.value.trim();
+    if (!typed || typed === box.defaultValue) { box.value = box.defaultValue; return; }
+    box.dataset.sent = '1';   // Enter also leaves the box: once is enough
+    app.goToBeat(typed)
+        .catch(err => { console.error('[Canon Timeline Simulator]', err); toast('error', err.message); })
+        .finally(() => renderBar(busyNow));
+}
+
+function onKey(e) {
+    const box = e.target.closest?.(JUMP);
+    if (!box || e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    e.stopPropagation();   // not SillyTavern's Enter (the popup's own button)
+    sendJump(box);
+    box.blur();            // puts the phone's keyboard away
+}
+
+function onFocusOut(e) {
+    const box = e.target.closest?.(JUMP);
+    if (box) sendJump(box);
+}
+
+/** Tapping the box selects its number, so typing replaces it. */
+function onFocusIn(e) {
+    const box = e.target.closest?.(JUMP);
+    if (box && !redrawing) box.select?.();
+}
+
+/**
+ * Replaces the window's content. A number being typed in the box stays, with the cursor, when the
+ * redraw was caused by something else (a message arriving, the panel being redrawn).
+ */
+function drawWindow(v) {
+    const box = pop.querySelector(JUMP);
+    const typing = box && !box.dataset.sent && document.activeElement === box ? box.value : null;
+    redrawing = true;
+    try {
+        pop.innerHTML = windowHtml(v);
+        const again = typing === null ? null : pop.querySelector(`${JUMP}:not([disabled])`);
+        if (again) {
+            again.value = typing;
+            again.focus();
+            again.setSelectionRange?.(typing.length, typing.length);
+        }
+    } finally {
+        redrawing = false;
+    }
 }
 
 /** Puts the icon in the input row: first in #rightSendForm (left of the send button), else right after the message box. */
@@ -134,7 +198,7 @@ export function renderBar(busyText = '') {
         button.hidden = !show;
         button.title = show ? `원작 대본 창 열기 — ${where(v)} (${beatCounter(v.w)})` : '';
     }
-    if (pop) pop.innerHTML = windowHtml(v);
+    if (pop) drawWindow(v);
 }
 
 export function isWindowOpen() {
@@ -151,6 +215,9 @@ export async function openWindow() {
     const el = document.createElement('div');
     el.className = 'cts-pop';
     el.addEventListener('click', onClick);
+    el.addEventListener('keydown', onKey);
+    el.addEventListener('focusout', onFocusOut);
+    el.addEventListener('focusin', onFocusIn);
     pop = el;
     el.innerHTML = windowHtml(view());
     try {

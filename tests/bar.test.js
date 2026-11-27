@@ -93,7 +93,18 @@ if (typeof document === 'undefined') {
         const b = (name) => win.querySelector(`[data-bar="${name}"]`);
         const off = () => [b('prev').disabled, b('next').disabled];
         const tap = async (name) => { b(name).click(); await tick(); };
-        const count = () => win.querySelector('.cts-pop-nav .cts-pop-count').textContent;
+        // the counter as it reads: the number in the box, then the rest ("41" + "~45 / 45")
+        const countOf = (w) => { const c = w.querySelector('.cts-pop-nav .cts-pop-count'); return c.querySelector('input').value + c.textContent; };
+        const count = () => countOf(win);
+        const box = () => win.querySelector('.cts-pop-nav input[data-bar-jump]');
+        const type = async (text, how = 'enter') => {
+            const el = box();
+            el.focus();
+            el.value = text;
+            if (how === 'enter') el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            else el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+            await tick();
+        };
         const shown = () => win.querySelector('pre.cts-pop-text').textContent;
         assert.strictEqual(shown(), md(), 'the window shows the injected string itself');
         assert.strictEqual(shown(), app.plannedInjection().md);
@@ -118,6 +129,39 @@ if (typeof document === 'undefined') {
         assert.same([count(), calls() - n, h.confirms.length], ['21~40 / 45', 0, 0]);
         await tap('prev');
 
+        // ---- the first number is a box: the arrows change it, and a Beat number typed there goes to its window
+        assert.same([box().value, box().disabled, box().getAttribute('inputmode'), win.querySelectorAll('.cts-pop-nav input').length], ['1', false, 'numeric', 1]);
+        let leaked = 0;
+        const spy = (e) => { if (e.key === 'Enter') leaked++; };
+        document.addEventListener('keydown', spy);
+        h.toasts.length = 0;
+        await type('45');
+        document.removeEventListener('keydown', spy);
+        assert.same([count(), box().value, md().startsWith('<canon_baseline file="a.md" beats="B41~B45">'), shown() === md(), off(), calls() - n, isWindowOpen()], ['41~45 / 45', '41', true, true, [false, true], 0, true], 'typed 45 + Enter → the window that holds it; the box shows its first Beat');
+        assert.same([h.toasts, leaked], [['info:45번째 Beat가 들어 있는 41~45 구간으로 옮겼어요.'], 0], 'the user is told which window; Enter stays in the box (it is not the popup\'s Enter)');
+        assert.includes(btn.title, '(41~45 / 45)');
+        await tap('prev');
+        assert.same([box().value, count()], ['21', '21~40 / 45'], 'the arrows change the number in the box');
+        await type('1', 'leave');
+        assert.same([count(), app.getMemory(false).beatWindowIndex], ['1~20 / 45', 0], 'leaving the box takes the number too');
+        h.toasts.length = 0;
+        await type('99');
+        assert.same([count(), box().value, h.toasts], ['1~20 / 45', '1', ['info:1 ~ 45 사이의 Beat 번호를 적어 주세요.']], 'not a Beat of this file: nothing moves, and the box shows where it is again');
+        await type('');
+        await type('1');
+        await type(' ', 'leave');
+        assert.same([count(), box().value, h.toasts.length, app.getMemory(false).beatWindowIndex], ['1~20 / 45', '1', 1, 0], 'emptied, or the same number: nothing to do');
+        // a redraw caused by something else keeps what is being typed
+        box().focus();
+        box().value = '3';
+        renderPanel();
+        assert.same([box().value, document.activeElement === box(), app.getMemory(false).beatWindowIndex], ['3', true, 0], 'typing survives a redraw');
+        box().value = '';
+        box().dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+        box().blur();
+        await tick();
+        assert.same([box().value, calls() - n, h.confirms.length], ['1', 0, 0]);
+
         // ---- past events on: the same question and the same single call as the panel's button
         s.pastEnabled = true;
         renderPanel();
@@ -135,15 +179,19 @@ if (typeof document === 'undefined') {
         h.state.reply = (args) => new Promise(res => { release = () => res(evt(args)); });
         b('next').click();
         await tick();
-        assert.same([app.isBusy(), off(), b('edit').disabled, !!win.querySelector('.cts-busy'), count()], [true, [true, true], true, true, '21~40 / 45'], 'busy: no second move, no edit');
+        assert.same([app.isBusy(), off(), b('edit').disabled, box().disabled, !!win.querySelector('.cts-busy'), count()], [true, [true, true], true, true, true, '21~40 / 45'], 'busy: no second move, no edit, no number');
         release();
         await tick();
-        assert.same([app.isBusy(), count(), off(), !!win.querySelector('.cts-busy')], [false, '41~45 / 45', [false, true], false]);
+        assert.same([app.isBusy(), count(), off(), box().disabled, !!win.querySelector('.cts-busy')], [false, '41~45 / 45', [false, true], false, false]);
         h.state.reply = evt;
         n = calls();
         await tap('prev');
         await tap('next');
         assert.same([calls() - n, shown() === md(), count()], [0, true, '41~45 / 45'], 'a window already recorded is passed without a call');
+        h.confirms.length = 0;
+        await type('1');
+        await type('41');
+        assert.same([count(), calls() - n, h.confirms.length], ['41~45 / 45', 0, 0], 'the box follows the same rule: back, and forward over recorded windows, without a question or a call');
         assert.includes(win.textContent, '원작 진행 기록');
 
         // ---- ✏️ in the window: the stored text of what is shown goes to the box; saved → the window shows the fix
@@ -166,10 +214,10 @@ if (typeof document === 'undefined') {
         // ---- a file without Beat headings: injected whole, nothing to move
         const win2 = FakePopup.all[1].content;
         await app.switchFile(1, { summarize: false });
-        assert.same([win2.querySelector('[data-bar="prev"]'), win2.querySelector('.cts-pop-count'), win2.querySelector('[data-bar="edit"]').textContent, win2.querySelector('[data-bar="editHeader"]')], [null, null, '✏️ 내용 고치기', null]);
+        assert.same([win2.querySelector('[data-bar="prev"]'), win2.querySelector('.cts-pop-count'), win2.querySelector('[data-bar-jump]'), win2.querySelector('[data-bar="edit"]').textContent, win2.querySelector('[data-bar="editHeader"]')], [null, null, null, '✏️ 내용 고치기', null]);
         assert.same([win2.querySelector('pre.cts-pop-text').textContent === md(), btn.hidden, btn.title.includes('c.md · 파일 전체 (전체)')], [true, false, true]);
         await app.switchFile(-1, { summarize: false });
-        assert.strictEqual(win2.querySelector('.cts-pop-count').textContent, '1~20 / 45', 'back on a.md, from its first window');
+        assert.strictEqual(countOf(win2), '1~20 / 45', 'back on a.md, from its first window');
         FakePopup.all[1].close();
         await tick();
 

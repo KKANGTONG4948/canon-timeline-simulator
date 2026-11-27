@@ -7,7 +7,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "",
-    "version": "0.9.2",
+    "version": "0.10.0",
     "homePage": "https://github.com/KKANGTONG4948/canon-timeline-simulator",
     "auto_update": false,
     "minimum_client_version": "1.13.0"

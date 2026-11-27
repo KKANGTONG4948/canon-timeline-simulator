@@ -178,7 +178,7 @@ function renderAdvanced(s) {
         <div class="cts-sub">Beat 구간</div>
         ${numberRow('beatWindowSize', '한 번에 넣을 Beat 개수', 1, 500, '체크한 파일의 Beat를 등장 순서대로 이만큼씩 잘라 현재 구간만 넣어요. 어느 구간인지는 채팅마다 따로 기억해요')}
         <label class="cts-toggle"><input type="checkbox" data-setting="pastEnabled"${s.pastEnabled !== false ? ' checked' : ''}> 지난 원작 사건 넣기<span class="cts-hint">켜면 [다음 N Beat]로 넘길 때 떠나는 구간의 원작 사건을 정리해(API 1회) [PAST CANON EVENTS]로 계속 넣어요. 끄면 그 블록을 넣지 않고, 구간도 정리 호출 없이 바로 넘어가요. 이미 만든 기록은 지우지 않아서 다시 켜면 그대로 돌아와요. 모든 채팅에 똑같이 적용돼요.</span></label>
-        <label class="cts-toggle"><input type="checkbox" data-setting="inputBar"${s.inputBar !== false ? ' checked' : ''}> 입력창에 원작 창 버튼 표시<span class="cts-hint">메시지 입력창 옆(보내기 버튼 왼쪽)에 📜 아이콘 하나를 둬요. 누르면 지금 AI에게 들어가는 원작 대본 창이 열리고, 그 안에서 [← 이전] 21~40 / 71 [다음 →]로 Beat 구간을 옮기고(위의 [이전 N Beat]·[다음 N Beat]와 같은 동작) 원문을 고칠 수 있어요. 가운데 숫자는 지금 넣는 Beat 위치 / 이 파일의 전체 Beat 수예요. 원작 진행을 켠 채팅에서만 보여요.</span></label>
+        <label class="cts-toggle"><input type="checkbox" data-setting="inputBar"${s.inputBar !== false ? ' checked' : ''}> 입력창에 원작 창 버튼 표시<span class="cts-hint">메시지 입력창 옆(보내기 버튼 왼쪽)에 📜 아이콘 하나를 둬요. 누르면 지금 AI에게 들어가는 원작 대본 창이 열리고, 그 안에서 [← 이전] [21]~40 / 71 [다음 →]로 Beat 구간을 옮기고(위의 [이전 N Beat]·[다음 N Beat]와 같은 동작) 원문을 고칠 수 있어요. 가운데 숫자는 지금 넣는 Beat 위치 / 이 파일의 전체 Beat 수이고, 네모 칸에 Beat 번호를 직접 적으면 그 Beat가 들어 있는 구간으로 가요. 원작 진행을 켠 채팅에서만 보여요.</span></label>
         <div class="cts-sub">넣는 위치</div>
         ${selectRow('mdPosition', '원작 대본 위치', POS, '원작 대본은 기준 자료라 최근 대화에서 먼 깊이에 둬도 돼요')}
         ${numberRow('mdDepth', '원작 대본 깊이', 0, 10000, '위치가 채팅 안일 때만')}

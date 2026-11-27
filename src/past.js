@@ -59,11 +59,19 @@ export function pastTask(cm, fileId, parsed, to) {
     return { from, to, firstId: parsed.beats[from].id, lastId: parsed.beats[to - 1].id, baseText: base?.text || '', script: beatsText(parsed, from, to) };
 }
 
+/**
+ * What must be on record before the window that starts at Beat `start` is shown: the job for the
+ * snapshot covering the first `start` Beats. Null when that snapshot exists, or nothing comes before.
+ */
+export function owedBefore(cm, fileId, parsed, start) {
+    if (!(start > 0) || start > parsed.beats.length) return null;
+    if (snapshots(cm, fileId, parsed.beats).some(s => s.count === start)) return null;
+    return pastTask(cm, fileId, parsed, start);
+}
+
 /** What [다음 N Beat] must record before leaving this window; null when its record already exists. */
 export function pendingPast(cm, fileId, parsed, win) {
-    if (!win?.total || win.end <= 0) return null;
-    if (snapshots(cm, fileId, parsed.beats).some(s => s.count === win.end)) return null;
-    return pastTask(cm, fileId, parsed, win.end);
+    return win?.total ? owedBefore(cm, fileId, parsed, win.end) : null;
 }
 
 // ---- text
