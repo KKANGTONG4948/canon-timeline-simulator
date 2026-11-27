@@ -57,6 +57,11 @@
 .cts-open:hover, .cts-open:focus-visible { opacity: 1; }
 #nonQRFormItems > .cts-open { order: 3; }   /* put right after the message box (no #rightSendForm): between it and what follows */
 #cts_open[hidden] { display: none !important; }
+/* On a phone this row has no spare room: a theme may hold the message box at a minimum width
+   (42% in the one this was found with), so one more icon made the icon groups shrink, and the
+   right-hand group's icons spilled left over the icon before them. While the icon is shown, the
+   message box gives up that room instead (down to a floor), so the icons keep their own gaps. */
+#nonQRFormItems:has(#cts_open:not([hidden])) > #send_textarea { min-width: 4em; }
 
 /* The window it opens (inside SillyTavern's popup). */
 .cts-pop { display: flex; flex-direction: column; gap: 6px; text-align: left; white-space: normal; }
