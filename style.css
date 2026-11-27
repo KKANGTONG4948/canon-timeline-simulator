@@ -51,9 +51,11 @@
 
 /* The one icon in the input row. In #rightSendForm SillyTavern's own rule (#rightSendForm > div)
    gives it the size and spacing of the icons next to it; the values here are the same ones, for
-   the case it had to be put elsewhere. The id selector is there to beat that rule when hidden. */
-.cts-open { width: var(--bottomFormBlockSize, 35px); height: var(--bottomFormBlockSize, 35px); font-size: var(--bottomFormIconSize, 1.1em); display: flex; align-items: center; justify-content: center; order: 3; cursor: pointer; opacity: 0.7; transition: opacity 200ms; }
+   the case it had to be put elsewhere. It keeps the default order there, so it stays left of the
+   send button (#send_but is order 2). The id selector is there to beat that rule when hidden. */
+.cts-open { width: var(--bottomFormBlockSize, 35px); height: var(--bottomFormBlockSize, 35px); font-size: var(--bottomFormIconSize, 1.1em); display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0.7; transition: opacity 200ms; }
 .cts-open:hover, .cts-open:focus-visible { opacity: 1; }
+#nonQRFormItems > .cts-open { order: 3; }   /* put right after the message box (no #rightSendForm): between it and what follows */
 #cts_open[hidden] { display: none !important; }
 
 /* The window it opens (inside SillyTavern's popup). */
